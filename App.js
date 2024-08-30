@@ -3,7 +3,23 @@ import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, Text, View, FlatList, Image, TextInput, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import SegmentedControlTab from 'react-native-segmented-control-tab';
+import { initializeApp } from 'firebase/app';
+import { getFirestore, collection, addDoc ,getDocs,doc, updateDoc,arrayUnion} from 'firebase/firestore';
+import { Rating } from 'react-native-ratings'; // Make sure to install this package if you haven't
 
+const firebaseConfig = {
+  apiKey: "AIzaSyDTOq4NBxYazZ5yMYRxKLedfN7zUTVPbcs",
+  authDomain: "kiwisuit-a01b0.firebaseapp.com",
+  databaseURL: "https://kiwisuit-a01b0-default-rtdb.firebaseio.com",
+  projectId: "kiwisuit-a01b0",
+  storageBucket: "kiwisuit-a01b0.appspot.com",
+  messagingSenderId: "397470845673",
+  appId: "1:397470845673:web:e173a0c7158539c9abbe78",
+  measurementId: "G-QVX1EF4DN3"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
 const Hotels = [
   // Sample hotel data
   { id: '1', name: 'Hotel Paradise', location: 'Colombo', image: 'https://example.com/image1.jpg', description: 'Beautiful hotel in Colombo', reviews: ['hello'], username: 'user1' },
@@ -14,7 +30,7 @@ const users =[{id:'1',firstname:'chamindu',lastname:'moramudali',username: 'user
 
 export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [filteredHotels, setFilteredHotels] = useState(Hotels);
+  const [filteredHotels, setFilteredHotels] = useState();
   const [showLogin, setShowLogin] = useState(false);
   const [showRegisterForm, setShowRegisterForm] = useState(false);
 
@@ -22,12 +38,13 @@ export default function App() {
   const [selectedHotel, setSelectedHotel] = useState(null);
   const [selectedTab, setSelectedTab] = useState(0);
   const [showProfile, setShowProfile] = useState(false);
-  const [registeredHotels, setRegisteredHotels] = useState(users);
-  const [allHotels, setallHotels] = useState(Hotels);
+  const [registeredHotels, setRegisteredHotels] = useState();
+  const [allHotels, setallHotels] = useState();
   const [name, setName] = useState('');
   const [location, setLocation] = useState('');
   const [image, setImage] = useState('');
-  
+  const [offers, setOffers] = useState({});
+
   const [firstname, setFirstname] = useState('');
   const [lastname, setLastname] = useState('');
   const [username, setUsername] = useState('');
@@ -37,7 +54,8 @@ export default function App() {
   const [description, setDescription] = useState('');
   const [reply, setReply] = useState('');
   const [newReview, setNewReview] = useState('');
-
+  const [rating, setRating] = useState(0); // Rating out of 5
+  const [Author , setAuthor]= useState('');
   const [loggedInUser, setLoggedInUser] = useState(null);
   const [editingDescription, setEditingDescription] = useState(false);
   const [addingOffer, setAddingOffer] = useState(false);
@@ -50,6 +68,30 @@ export default function App() {
     description: '',
     username: ''
   });
+
+
+  useEffect(() => {
+    // Fetch hotels from Firestore
+    const fetchHotels = async () => {
+      try {
+
+        const usersSnapshot = await getDocs(collection(db, 'users'));
+        const usersList = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setRegisteredHotels(usersList);
+
+
+        const querySnapshot = await getDocs(collection(db, 'hotels'));
+        const hotelsList = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setallHotels(hotelsList);
+        setFilteredHotels(hotelsList);
+      } catch (error) {
+        console.error("Error fetching hotels: ", error);
+        Alert.alert('Error', 'Something went wrong while fetching the hotels');
+      }
+    };
+    fetchHotels();
+  }, []);
+
 
   useEffect(() => {
     if (loggedInUser) {
@@ -114,35 +156,51 @@ export default function App() {
     setUsername('');
     setPassword('');
   };
-  const RegisterNewHotel = () => {
+  const RegisterNewHotel = async () => {
+    console.log("Document written with ID: ");
+
     if (!name || !location || !image || !description || !username) {
       Alert.alert('Error', 'Please fill all fields');
       return;
     }
-
+  
     const newHotel = {
-      id: (allHotels.length + 1).toString(), // Generate a new ID based on the array length
       name,
       location,
       image,
       description,
       reviews: [],
+      offers:[], 
       username,
     };
+  
+    try {
+      // Save the hotel data to Firestore
+      const docRef = await addDoc(collection(db, 'hotels'), newHotel);
+      console.log("Document written with ID: ", docRef.id);
 
-    setallHotels([...allHotels, newHotel]);
-
-    Alert.alert('Success', 'Hotel registered successfully');
-
-    // Clear form fields
-    setName('');
-    setLocation('');
-    setImage('');
-    setDescription('');
-    setUsername('');
-    setShowRegisterForm(false);
+      // You can add the generated ID to the hotel object if needed
+      newHotel.id = docRef.id;
+  
+      // Update the local state
+      setallHotels([...allHotels, newHotel]);
+      Alert.alert('Success', 'Hotel registered successfully');
+      
+      // Clear form fields
+      setName('');
+      setLocation('');
+      setImage('');
+      setDescription('');
+      setUsername('');
+      setShowRegisterForm(false);
+  
+    } catch (error) {
+      console.error("Error adding document: ", error);
+      Alert.alert('Error', 'Something went wrong while registering the hotel');
+    }
   };
-  const handleRegisterHotel = () => {
+  
+  const handleRegisterHotel  = async () => {
     if (password !== confirmPassword) {
       Alert.alert('Error', 'Passwords do not match');
       return;
@@ -154,7 +212,8 @@ export default function App() {
       username,
       password,
     };
-  
+    const docRef = await addDoc(collection(db, 'users'), newHotel);
+
     // Add the new hotel to the registeredHotels array
     setRegisteredHotels((prevHotels) => [...prevHotels, newHotel]);
   
@@ -169,6 +228,8 @@ export default function App() {
     setPassword('');
     setConfirmPassword('');
     setShowRegisterForm(false);
+    fetchHotels();
+
   };
   
 
@@ -182,13 +243,24 @@ export default function App() {
   };
 
   const handleHotelSelect = (hotel) => {
+    // Create a new array to store the offers for the selected hotel
+    const newOffers = hotel.offers ? [...hotel.offers] : [];
+  
+    // Set the new offers array in the state
+    setOffers(newOffers);
+  
+    // Log to verify
+    console.log("New offers array:", newOffers);
+  console.log(offers)
+    // Continue with other state updates
     setSelectedHotel(hotel);
     setSelectedTab(0);
     setEditingDescription(false);
     setAddingOffer(false);
     setReplyingToReview(null);
   };
-
+  
+  
   const handleBack = () => {
     setSelectedHotel(null);
   };
@@ -200,42 +272,104 @@ export default function App() {
 
 
   };
-  const handleSaveDescription = () => {
+  const handleSaveDescription = async () => {
     if (description.trim()) {
       const updatedHotel = { ...selectedHotel, description };
-      setallHotels(prevHotels => prevHotels.map(hotel => 
-        hotel.id === selectedHotel.id ? updatedHotel : hotel
-      ));
-      setSelectedHotel(updatedHotel);
-      Alert.alert('Success', 'Description updated successfully');
-      setEditingDescription(false);
+  console.log(updatedHotel)
+      try {
+        // Update the hotel description in Firestore
+        const hotelDocRef = doc(db, 'hotels', selectedHotel.id); // Replace 'hotels' with your collection name
+        await updateDoc(hotelDocRef, { description });
+  
+        // Update local state
+        setallHotels(prevHotels => prevHotels.map(hotel => 
+          hotel.id === selectedHotel.id ? updatedHotel : hotel
+        ));
+        setSelectedHotel(updatedHotel);
+        Alert.alert('Success', 'Description updated successfully');
+        setEditingDescription(false);
+        fetchHotels();
+
+      } catch (error) {
+        Alert.alert('Error', 'Failed to update description. Please try again.');
+        console.error("Error updating description: ", error);
+      }
     } else {
       Alert.alert('Error', 'Description cannot be empty');
     }
   };
+  const handleAddReview = async () => {
+    if (!newReview || rating === 0) {
+      Alert.alert('Error', 'Please enter a review and select a rating');
+      return;
+    }
   
-  const handleAddReview = () => {
-    if (newReview.trim()) {
-      const updatedHotel = { ...selectedHotel, reviews: [...selectedHotel.reviews, newReview] };
-      setallHotels(prevHotels => prevHotels.map(hotel => 
-        hotel.id === selectedHotel.id ? updatedHotel : hotel
-      ));
+    const newReviewObj = {
+      username: Author,
+      review: newReview,
+      rating: rating, // Include rating
+    };
+  
+    try {
+      const hotelDocRef = doc(db, 'hotels', selectedHotel.id);
+  
+      await updateDoc(hotelDocRef, {
+        reviews: arrayUnion(newReviewObj),
+      });
+  
+      const updatedHotel = { 
+        ...selectedHotel,
+        reviews: [...selectedHotel.reviews, newReviewObj],
+      };
       setSelectedHotel(updatedHotel);
+  
+      Alert.alert('Success', 'Review added successfully');
       setNewReview('');
-    } else {
-      Alert.alert('Error', 'Review cannot be empty');
+      setRating(0); // Reset rating after submission
+      setAuthor('');
+    } catch (error) {
+      console.error('Error adding review: ', error);
+      Alert.alert('Error', 'Something went wrong while adding the review');
     }
   };
   
-
-  const handleAddOffer = () => {
+  const handleAddOffer = async () => {
     if (offer.trim()) {
-      Alert.alert('Success', 'Offer added successfully');
-      setAddingOffer(false);
+      try {
+        const hotelDocRef = doc(db, 'hotels', selectedHotel.id);
+        
+        // Add new offer to the Firestore database
+        await updateDoc(hotelDocRef, {
+          offers: arrayUnion(offer)
+        });
+  
+        // Update local state
+        setOffers(prevOffers => {
+          const updatedOffers = [...prevOffers, offer];
+          console.log('Offers:', updatedOffers); // Log the updated offers here
+          return updatedOffers;
+        });
+
+        const updatedHotel = { 
+          ...selectedHotel,
+          offers: [...selectedHotel.offers, offer],
+        };
+
+        setSelectedHotel(updatedHotel);
+
+        Alert.alert('Success', 'Offer added successfully');
+        setOffer(''); // Clear the input field
+        setAddingOffer(false);
+      } catch (error) {
+        console.error("Error adding offer: ", error);
+        Alert.alert('Error', 'Failed to add offer');
+      }
     } else {
       Alert.alert('Error', 'Offer cannot be empty');
     }
   };
+  
+  
 
   const handleReplyToReview = () => {
     if (reply.trim()) {
@@ -249,11 +383,36 @@ export default function App() {
  
   
   const renderReviewItem = ({ item }) => (
-    <View style={styles.reviewText}>
-      <Text style={styles.reviewText}>{item}</Text>
+    <View style={styles.reviewContainer}>
+      <Text style={styles.reviewText}>{item.review}</Text>
+      <Rating
+        imageSize={20}
+        readonly
+        startingValue={item.rating}
+        style={styles.rating}
+      />
+      <Text style={styles.username}>{item.username}</Text>
     </View>
   );
-
+  
+  const RatingInput = ({ rating, setRating }) => (
+    <View style={styles.ratingContainer}>
+      {[1, 2, 3, 4, 5].map((star) => (
+        <TouchableOpacity
+          key={star}
+          onPress={() => setRating(star)}
+          style={styles.starButton}
+        >
+          <Ionicons
+            name={star <= rating ? "star" : "star-outline"}
+            size={24}
+            color={star <= rating ? "#FFD700" : "#ccc"}
+          />
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+  
 
   const renderHotel = ({ item }) => (
     <TouchableOpacity style={styles.hotelTile} onPress={() => handleHotelSelect(item)}>
@@ -344,6 +503,24 @@ export default function App() {
             selectedIndex={selectedTab}
             onTabPress={(index) => setSelectedTab(index)}
           /> 
+          {selectedTab === 0 &&(
+            <View>
+            <Text style={styles.sectionTitle}>Offers</Text>
+            {offers.length ? (
+               <FlatList
+               data={selectedHotel.offers}
+               keyExtractor={(item, index) => index.toString()}
+               renderItem={({ item }) => (
+                 <View style={{ padding: 10, borderBottomWidth: 1, borderColor: '#ccc' }}>
+                   <Text>{item}</Text>
+                 </View>
+               )}
+             />
+            ) : (
+              <Text>No offers available</Text>
+            )}
+          </View>
+          )}
           {loggedInUser && selectedTab === 0 && (
             <View>
               {editingDescription ? (
@@ -362,37 +539,57 @@ export default function App() {
                 <TouchableOpacity onPress={() => setEditingDescription(true)}>
                   <Text style={styles.editButton}>Edit Description</Text>
                 </TouchableOpacity>
+                
               )}
-              
-            </View>
-          )}
-          {selectedTab === 1 && (
-            <ScrollView>
-          
-              <View>
-                <FlatList
-              data={selectedHotel.reviews}
-              renderItem={renderReviewItem}
-              keyExtractor={(item, index) => index.toString()}
+           
+
+          {/* Add Offer Form */}
+          <View style={styles.formContainer}>
+            <TextInput
+              style={styles.input}
+              placeholder="Add an offer"
+              value={offer}
+              onChangeText={setOffer}
             />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Add a review"
-                  value={newReview}
-                  onChangeText={setNewReview}
-                />
-                <TouchableOpacity style={styles.submitButton} onPress={handleAddReview}>
-                  <Text style={styles.buttonText}>Add Review</Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
+            <TouchableOpacity style={styles.submitButton} onPress={handleAddOffer}>
+              <Text style={styles.buttonText}>Add Offer</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+          {selectedTab === 1 && (
+             <ScrollView>
+             <FlatList
+               data={selectedHotel.reviews}
+               renderItem={renderReviewItem}
+               keyExtractor={(item, index) => index.toString()}
+             />
+             <View style={styles.formContainer}>
+               <TextInput
+                 style={styles.input}
+                 placeholder="Add a review"
+                 value={newReview}
+                 onChangeText={setNewReview}
+               />
+               <TextInput
+                 style={styles.input}
+                 placeholder="Add Name"
+                 value={Author}
+                 onChangeText={setAuthor}
+               />
+               <RatingInput rating={rating} setRating={setRating} />
+               <TouchableOpacity style={styles.submitButton} onPress={handleAddReview}>
+                 <Text style={styles.buttonText}>Add Review</Text>
+               </TouchableOpacity>
+             </View>
+           </ScrollView>
           )}
         </View>
 
           
         </ScrollView>
       ) : showRegisterForm ? (
-        <View style={styles.registerContainer}>
+        <View style={styles.formContainer}>
           <Text style={styles.registerHeader}>Register Hotel</Text>
           <TextInput
             style={styles.inputField}
@@ -528,6 +725,56 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     padding: 10,
   },
+
+  reviewText: {
+    fontSize: 16,
+  },
+
+  reviewItem: {
+    backgroundColor: '#444', // Dark background for review items
+    padding: 10,
+    borderRadius: 5,
+    marginBottom: 10,
+  },
+  reviewText: {
+    color: '#fff',
+    fontSize: 16,
+  },
+  username: {
+    color: '#ddd',
+    fontSize: 14,
+    marginTop: 5,
+  },
+  rating: {
+    color: '#ffd700', // Gold color for rating
+    fontSize: 14,
+    marginTop: 5,
+  },
+  formContainer: {
+    backgroundColor: '#f5f5f5', // Dark background for the form
+    padding: 20,
+    borderRadius: 10,
+    margin: 10,
+  },
+  input: {
+    backgroundColor: '#555', // Slightly lighter dark color for input
+    color: '#fff',
+    padding: 10,
+    borderRadius: 5,
+    marginBottom: 10,
+  },
+  submitButton: {
+    backgroundColor: '#007bff', // Button color
+    padding: 10,
+    borderRadius: 5,
+    alignItems: 'center',
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 16,
+  },
+
+
   hotelLocation: {
     fontSize: 14,
     paddingHorizontal: 10,
@@ -544,6 +791,32 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 200,
   },
+
+  ratingContainer: {
+    flexDirection: 'row',
+    marginVertical: 10,
+  },
+
+  reviewContainer: {
+    padding: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#ccc',
+  },
+  reviewText: {
+    fontSize: 16,
+    marginBottom: 5,
+  },
+  rating: {
+    marginVertical: 5,
+  },
+  username: {
+    fontSize: 14,
+    color: '#555',
+  },
+  starButton: {
+    marginHorizontal: 2,
+  },
+
   backButton: {
     position: 'absolute',
     top: 10,
@@ -698,9 +971,7 @@ const styles = StyleSheet.create({
     color: '#555',
     paddingHorizontal: 10,
   },
-  formContainer: {
-    marginTop: 20,
-  },
+ 
   formTitle: {
     fontSize: 18,
     fontWeight: 'bold',
