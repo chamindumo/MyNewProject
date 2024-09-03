@@ -6,6 +6,8 @@ import SegmentedControlTab from 'react-native-segmented-control-tab';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc ,getDocs,doc, updateDoc,arrayUnion} from 'firebase/firestore';
 import { Rating } from 'react-native-ratings'; // Make sure to install this package if you haven't
+import { launchImageLibrary } from 'react-native-image-picker';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDTOq4NBxYazZ5yMYRxKLedfN7zUTVPbcs",
@@ -42,7 +44,7 @@ export default function App() {
   const [allHotels, setallHotels] = useState();
   const [name, setName] = useState('');
   const [location, setLocation] = useState('');
-  const [image, setImage] = useState('');
+  const [image, setImage] = useState(null);
   const [offers, setOffers] = useState({});
 
   const [firstname, setFirstname] = useState('');
@@ -156,6 +158,23 @@ export default function App() {
     setUsername('');
     setPassword('');
   };
+
+  const selectImage = () => {
+    const options = {
+      mediaType: 'photo',
+    };
+    launchImageLibrary(options, (response) => {
+      if (response.didCancel) {
+        console.log('User cancelled image picker');
+      } else if (response.error) {
+        console.log('ImagePicker Error: ', response.error);
+      } else if (response.assets && response.assets.length > 0) {
+        const selectedImage = response.assets[0].uri;
+        setImage(selectedImage);
+      }
+    });
+  };
+
   const RegisterNewHotel = async () => {
     console.log("Document written with ID: ");
 
@@ -175,6 +194,22 @@ export default function App() {
     };
   
     try {
+
+      const storage = getStorage();
+    const imageRef = ref(storage, `hotels/${Date.now()}_${name}`);
+
+    // Convert the image URI to a blob for upload
+    const response = await fetch(image);
+    const blob = await response.blob();
+
+    // Upload the image to Firebase Storage
+    await uploadBytes(imageRef, blob);
+
+    // Get the image URL from Firebase Storage
+    const imageUrl = await getDownloadURL(imageRef);
+    newHotel.image = imageUrl; // Update the image URL in the hotel data
+
+
       // Save the hotel data to Firestore
       const docRef = await addDoc(collection(db, 'hotels'), newHotel);
       console.log("Document written with ID: ", docRef.id);
@@ -466,12 +501,11 @@ export default function App() {
             onChangeText={setLocation}
             style={styles.input}
           />
-          <TextInput
-            placeholder="Image URL"
-            value={image}
-            onChangeText={setImage}
-            style={styles.input}
-          />
+      <TouchableOpacity style={styles.uploadButton} onPress={selectImage}>
+        <Text style={styles.buttonText}>Upload Image</Text>
+      </TouchableOpacity>
+            {image && <Image source={{ uri: image }} style={styles.imagePreview} />}
+
           <TextInput
             placeholder="Description"
             value={description}
@@ -697,6 +731,22 @@ const styles = StyleSheet.create({
   loggedInUserText: {
     fontSize: 16,
     marginTop: 10,
+  },
+  uploadButton: {
+    backgroundColor: '#007BFF',
+    padding: 10,
+    alignItems: 'center',
+    borderRadius: 5,
+    marginBottom: 10,
+  },
+  buttonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  imagePreview: {
+    width: 100,
+    height: 100,
+    marginBottom: 10,
   },
   toggleButton: {
     backgroundColor: '#007BFF',
