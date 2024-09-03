@@ -8,6 +8,7 @@ import { getFirestore, collection, addDoc ,getDocs,doc, updateDoc,arrayUnion} fr
 import { Rating } from 'react-native-ratings'; // Make sure to install this package if you haven't
 import { launchImageLibrary } from 'react-native-image-picker';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDTOq4NBxYazZ5yMYRxKLedfN7zUTVPbcs",
@@ -46,6 +47,10 @@ export default function App() {
   const [location, setLocation] = useState('');
   const [image, setImage] = useState(null);
   const [offers, setOffers] = useState({});
+  const [startDate, setStartDate] = useState(new Date());
+  const [endDate, setEndDate] = useState(new Date());
+  const [showStartDatePicker, setShowStartDatePicker] = useState(false);
+  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
 
   const [firstname, setFirstname] = useState('');
   const [lastname, setLastname] = useState('');
@@ -298,6 +303,8 @@ export default function App() {
   
   const handleBack = () => {
     setSelectedHotel(null);
+    setEditingHotel(false);
+
   };
 
   
@@ -333,6 +340,54 @@ export default function App() {
       Alert.alert('Error', 'Description cannot be empty');
     }
   };
+
+  const handleSaveHotelDetails = async () => {
+    if (!name || !location || !description) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+
+    const updatedHotel = {
+      name,
+      location,
+      image: image || selectedHotel.image, // Keep the current image if not changed
+      description,
+      username: selectedHotel.username,
+    };
+
+    try {
+      const hotelDocRef = doc(db, 'hotels', selectedHotel.id);
+
+      if (image && image !== selectedHotel.image) {
+        const storage = getStorage();
+        const imageRef = ref(storage, `hotels/${Date.now()}_${name}`);
+
+        const response = await fetch(image);
+        const blob = await response.blob();
+
+        await uploadBytes(imageRef, blob);
+
+        const imageUrl = await getDownloadURL(imageRef);
+        updatedHotel.image = imageUrl;
+      }
+
+      await updateDoc(hotelDocRef, updatedHotel);
+
+      setallHotels(prevHotels => prevHotels.map(hotel =>
+        hotel.id === selectedHotel.id ? updatedHotel : hotel
+      ));
+
+      setSelectedHotel(updatedHotel);
+      Alert.alert('Success', 'Hotel details updated successfully');
+      setEditingDescription(false);
+
+    } catch (error) {
+      
+      Alert.alert('Error', 'Something went wrong while updating the hotel details');
+    }
+  };
+
+
   const handleAddReview = async () => {
     if (!newReview || rating === 0) {
       Alert.alert('Error', 'Please enter a review and select a rating');
@@ -558,20 +613,41 @@ export default function App() {
           {loggedInUser && selectedTab === 0 && (
             <View>
               {editingDescription ? (
-                <View>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Edit Description"
-                    value={description}
-                    onChangeText={setDescription}
-                  />
-                  <TouchableOpacity style={styles.submitButton} onPress={handleSaveDescription}>
-                    <Text style={styles.buttonText}>Save Description</Text>
-                  </TouchableOpacity>
-                </View>
+               <View style={styles.formContainer}>
+          <Text style={styles.formTitle}>Edit Hotel Details</Text>
+          <TextInput
+            placeholder="Hotel Name"
+            value={name}
+            onChangeText={setName}
+            style={styles.input}
+          />
+          <TextInput
+            placeholder="Location"
+            value={location}
+            onChangeText={setLocation}
+            style={styles.input}
+          />
+          <TouchableOpacity style={styles.uploadButton} onPress={selectImage}>
+            <Text style={styles.buttonText}>Upload New Image</Text>
+          </TouchableOpacity>
+          {image && <Image source={{ uri: image }} style={styles.imagePreview} />}
+          <TextInput
+            placeholder="Description"
+            value={description}
+            onChangeText={setDescription}
+            style={styles.input}
+          />
+          <TouchableOpacity style={styles.backButton} onPress={() => setEditingDescription(false)}>
+            <Text style={styles.editButton}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.submitButton} onPress={handleSaveHotelDetails}>
+            <Text style={styles.buttonText}>Save Changes</Text>
+          </TouchableOpacity>
+         
+        </View>
               ) : (
                 <TouchableOpacity onPress={() => setEditingDescription(true)}>
-                  <Text style={styles.editButton}>Edit Description</Text>
+                  <Text style={styles.editButton}>Edit Hotel</Text>
                 </TouchableOpacity>
                 
               )}
